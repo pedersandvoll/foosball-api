@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"database/sql"
+	"github.com/golang-jwt/jwt/v5"
 	"pedersandvoll/foosballapi/config"
 	"pedersandvoll/foosballapi/utils"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -18,12 +21,12 @@ func NewHandlers(db *config.Database) *Handlers {
 	}
 }
 
-func (h *Handlers) GetUsers(c *fiber.Ctx) error {
-	type User struct {
-		ID       int    `json:"userid"`
-		UserName string `json:"username"`
-	}
+type User struct {
+	ID       int    `json:"userid"`
+	UserName string `json:"username"`
+}
 
+func (h *Handlers) GetUsers(c *fiber.Ctx) error {
 	rows, err := h.db.Query("SELECT userid, username FROM users")
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database query failed"})
@@ -51,20 +54,32 @@ func (h *Handlers) GetUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
-func (h *Handlers) getUserByUsername(username string) (bool, error) {
-	var exists bool
-	query := "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)"
-	err := h.db.QueryRow(query, username).Scan(&exists)
-	return exists, err
+type UserByName struct {
+	UserName string `json:"username"`
+	Password string `json:"password"`
 }
 
-type RegisterBody struct {
+func (h *Handlers) getUserByUsername(username string) (UserByName, error) {
+	var password string
+	query := "SELECT username, password FROM users WHERE username=$1;"
+	row := h.db.QueryRow(query, username)
+	switch err := row.Scan(&username, &password); err {
+	case sql.ErrNoRows:
+		return UserByName{}, err
+	case nil:
+		return UserByName{UserName: username, Password: password}, nil
+	default:
+		return UserByName{}, err
+	}
+}
+
+type UserBody struct {
 	UserName string `json:"username"`
 	Password string `json:"password"`
 }
 
 func (h *Handlers) RegisterUser(c *fiber.Ctx) error {
-	var body RegisterBody
+	var body UserBody
 
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -99,9 +114,56 @@ func (h *Handlers) RegisterUser(c *fiber.Ctx) error {
 		})
 	}
 
-	// Return success with the new user ID
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "User created successfully",
 		"userid":  userID,
 	})
+}
+
+func (h *Handlers) LoginUser(c *fiber.Ctx) error {
+	var body UserBody
+
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if body.UserName == "" || body.Password == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Username and password are required",
+		})
+	}
+
+	userExist, err := h.getUserByUsername(body.UserName)
+	if err == sql.ErrNoRows {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User or password are wrong",
+		})
+	} else if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Database error",
+		})
+	}
+
+	isValid := utils.VerifyPassword(body.Password, userExist.Password)
+	if !isValid {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User or password are wrong",
+		})
+	}
+
+	claims := jwt.MapClaims{
+		"username": userExist.UserName,
+		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	t, err := token.SignedString([]byte("secret"))
+	if err != nil {
+		return c.SendStatus(fiber.StatusInternalServerError)
+	}
+
+	return c.JSON(fiber.Map{"token": t})
 }
