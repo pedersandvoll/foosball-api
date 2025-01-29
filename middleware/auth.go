@@ -29,6 +29,11 @@ func AuthRequired(jwtSecret []byte) fiber.Handler {
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			c.Locals("username", claims["username"])
 			c.Locals("userid", claims["userid"])
+			if activeOrg, exists := claims["activeorg"]; exists {
+				c.Locals("activeorg", activeOrg)
+			} else {
+				c.Locals("activeorg", nil)
+			}
 			c.Locals("user", token)
 		}
 

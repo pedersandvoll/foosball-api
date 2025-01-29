@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"pedersandvoll/foosballapi/config"
 	"pedersandvoll/foosballapi/utils"
@@ -76,21 +77,25 @@ func (h *Handlers) GetUsers(c *fiber.Ctx) error {
 }
 
 type UserByName struct {
-	UserName string `json:"username"`
-	Password string `json:"password"`
-	UserId   string `json:"userid"`
+	UserName  string  `json:"username"`
+	Password  string  `json:"password"`
+	UserId    string  `json:"userid"`
+	ActiveOrg *string `json:"activeorg,omitempty"`
 }
 
 func (h *Handlers) getUserByUsername(username string) (UserByName, error) {
 	var password string
 	var userid string
-	query := "SELECT username, password, userid FROM users WHERE username=$1;"
+	var activeorg *string
+
+	query := "SELECT username, password, userid, activeorg FROM users WHERE username=$1;"
 	row := h.db.QueryRow(query, username)
-	switch err := row.Scan(&username, &password, &userid); err {
+
+	switch err := row.Scan(&username, &password, &userid, &activeorg); err {
 	case sql.ErrNoRows:
 		return UserByName{}, err
 	case nil:
-		return UserByName{UserName: username, Password: password, UserId: userid}, nil
+		return UserByName{UserName: username, Password: password, UserId: userid, ActiveOrg: activeorg}, nil
 	default:
 		return UserByName{}, err
 	}
@@ -180,6 +185,9 @@ func (h *Handlers) LoginUser(c *fiber.Ctx) error {
 		"username": userExist.UserName,
 		"userid":   userExist.UserId,
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+	}
+	if userExist.ActiveOrg != nil {
+		claims["activeorg"] = *userExist.ActiveOrg
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -296,5 +304,76 @@ func (h *Handlers) JoinOrg(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "Added user to organization",
+	})
+}
+
+type OrgSettings struct {
+	OrgOwner          *int `json:"orgowner"`
+	MaxLobbies        *int `json:"maxlobbies"`
+	MaxGamesPerSeason *int `json:"maxgamesperseason"`
+}
+
+func (h *Handlers) EditOrgSettings(c *fiber.Ctx) error {
+	var body OrgSettings
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if body.OrgOwner == nil && body.MaxLobbies == nil && body.MaxGamesPerSeason == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "At least one option must be passed in",
+		})
+	}
+
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+	activeOrg, exists := claims["activeorg"]
+	if !exists || activeOrg == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "User not part of any org",
+		})
+	}
+	activeOrgStr, ok := activeOrg.(string)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid activeorg format",
+		})
+	}
+	query := "UPDATE organizationsettings SET "
+	var args []interface{}
+	argCount := 1
+
+	if body.OrgOwner != nil {
+		query += fmt.Sprintf("orgowner = $%d, ", argCount)
+		args = append(args, *body.OrgOwner)
+		argCount++
+	}
+	if body.MaxLobbies != nil {
+		query += fmt.Sprintf("maxlobbies = $%d, ", argCount)
+		args = append(args, *body.MaxLobbies)
+		argCount++
+	}
+	if body.MaxGamesPerSeason != nil {
+		query += fmt.Sprintf("maxgamesperseason = $%d, ", argCount)
+		args = append(args, *body.MaxGamesPerSeason)
+		argCount++
+	}
+
+	query = query[:len(query)-2]
+
+	query += fmt.Sprintf(" WHERE orgid = $%d", argCount)
+	args = append(args, activeOrgStr)
+
+	_, err := h.db.Exec(query, args...)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update organization settings",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Organization settings updated successfully",
 	})
 }
