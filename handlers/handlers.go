@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"pedersandvoll/foosballapi/config"
 	"pedersandvoll/foosballapi/utils"
@@ -200,15 +199,12 @@ type NewOrg struct {
 
 func (h *Handlers) CreateOrganization(c *fiber.Ctx) error {
 	var body NewOrg
-
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request body",
 		})
 	}
 
-	fmt.Println(body.Name)
-	fmt.Println(body.OrgSecret)
 	if body.Name == "" || body.OrgSecret == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Name and orgsecret is required",
@@ -242,5 +238,63 @@ func (h *Handlers) CreateOrganization(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "Org created successfully",
 		"orgid":   orgID,
+	})
+}
+
+func (h *Handlers) getOrgBySecret(orgsecret string, c *fiber.Ctx) (string, error) {
+	var orgID string
+
+	query := "SELECT orgid FROM organizations WHERE orgsecret=$1"
+	err := h.db.QueryRow(query, orgsecret).Scan(&orgID)
+	if err != nil {
+		log.Printf("Database query error: %v", err)
+		return "", c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "No org with that secret",
+		})
+	}
+
+	return orgID, nil
+}
+
+type JoinOrg struct {
+	OrgSecret string `json:"orgsecret"`
+}
+
+func (h *Handlers) JoinOrg(c *fiber.Ctx) error {
+	var body JoinOrg
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if body.OrgSecret == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Org secret is required",
+		})
+	}
+
+	orgID, err := h.getOrgBySecret(body.OrgSecret, c)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to get org",
+		})
+	}
+
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+	userID := claims["userid"].(string)
+
+	query := "UPDATE users SET activeorg = $1 WHERE userid = $2;"
+	_, err = h.db.Exec(query, orgID, userID)
+	if err != nil {
+		log.Printf("Database query error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create org settings",
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message": "Added user to organization",
 	})
 }
