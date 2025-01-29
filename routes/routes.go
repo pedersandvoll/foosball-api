@@ -2,12 +2,19 @@ package routes
 
 import (
 	"pedersandvoll/foosballapi/handlers"
+	"pedersandvoll/foosballapi/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 func Routes(app *fiber.App, h *handlers.Handlers) {
-	app.Get("/users", h.GetUsers)
 	app.Post("/register", h.RegisterUser)
 	app.Post("/login", h.LoginUser)
+
+	api := app.Group("/api")
+	api.Use(middleware.AuthRequired(h.JWTSecret))
+
+	api.Post("/refresh", h.RefreshToken)
+	api.Get("/users", h.GetUsers)
+	api.Post("/org", h.CreateOrganization)
 }

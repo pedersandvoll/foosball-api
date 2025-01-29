@@ -1,5 +1,4 @@
-# @name get all users
-GET http://localhost:3000/users
+@bearer_token = Bearer your-key
 
 ###
 # @name register user
@@ -19,4 +18,26 @@ Content-Type: application/json
 {
     "username" : "username",
     "password" : "password"
+}
+###
+# @name refresh token
+POST http://localhost:3000/api/refresh
+Content-Type: application/json
+Authorization: {{bearer_token}}
+
+###
+# @name get all users
+GET http://localhost:3000/api/users
+Content-Type: application/json
+Authorization: {{bearer_token}}
+
+###
+# @name create org
+POST http://localhost:3000/api/org
+Content-Type: application/json
+Authorization: {{bearer_token}}
+
+{
+    "name" : "org1",
+    "orgsecret" : "1234"
 }

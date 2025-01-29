@@ -14,22 +14,24 @@ type Database struct {
 }
 
 type Config struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	Host      string
+	Port      string
+	User      string
+	Password  string
+	DBName    string
+	SSLMode   string
+	JWTSecret string
 }
 
 func NewConfig() *Config {
 	return &Config{
-		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "5432"),
-		User:     getEnv("DB_USER", "postgres"),
-		Password: getEnv("DB_PASSWORD", "password"),
-		DBName:   getEnv("DB_NAME", "dbname"),
-		SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		Host:      getEnv("DB_HOST", "localhost"),
+		Port:      getEnv("DB_PORT", "5432"),
+		User:      getEnv("DB_USER", "postgres"),
+		Password:  getEnv("DB_PASSWORD", "password"),
+		DBName:    getEnv("DB_NAME", "dbname"),
+		SSLMode:   getEnv("DB_SSLMODE", "disable"),
+		JWTSecret: getEnv("JWT_SECRET", "your-default-secret-key"),
 	}
 }
 

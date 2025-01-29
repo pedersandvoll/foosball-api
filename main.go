@@ -25,7 +25,7 @@ func main() {
 
 	app := fiber.New()
 
-	h := handlers.NewHandlers(db)
+	h := handlers.NewHandlers(db, dbConfig.JWTSecret)
 
 	routes.Routes(app, h)
 

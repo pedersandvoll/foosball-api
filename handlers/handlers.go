@@ -2,23 +2,45 @@ package handlers
 
 import (
 	"database/sql"
-	"github.com/golang-jwt/jwt/v5"
+	"fmt"
+	"log"
 	"pedersandvoll/foosballapi/config"
 	"pedersandvoll/foosballapi/utils"
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
 	"github.com/gofiber/fiber/v2"
 )
 
 type Handlers struct {
-	db *config.Database
+	db        *config.Database
+	JWTSecret []byte
 }
 
-func NewHandlers(db *config.Database) *Handlers {
+func NewHandlers(db *config.Database, jwtSecret string) *Handlers {
 	return &Handlers{
-		db: db,
+		db:        db,
+		JWTSecret: []byte(jwtSecret),
 	}
+}
+
+func (h *Handlers) RefreshToken(c *fiber.Ctx) error {
+	username := c.Locals("username").(string)
+
+	claims := jwt.MapClaims{
+		"username": username,
+		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	t, err := token.SignedString(h.JWTSecret)
+	if err != nil {
+		return c.SendStatus(fiber.StatusInternalServerError)
+	}
+
+	return c.JSON(fiber.Map{"token": t})
 }
 
 type User struct {
@@ -57,17 +79,19 @@ func (h *Handlers) GetUsers(c *fiber.Ctx) error {
 type UserByName struct {
 	UserName string `json:"username"`
 	Password string `json:"password"`
+	UserId   string `json:"userid"`
 }
 
 func (h *Handlers) getUserByUsername(username string) (UserByName, error) {
 	var password string
-	query := "SELECT username, password FROM users WHERE username=$1;"
+	var userid string
+	query := "SELECT username, password, userid FROM users WHERE username=$1;"
 	row := h.db.QueryRow(query, username)
-	switch err := row.Scan(&username, &password); err {
+	switch err := row.Scan(&username, &password, &userid); err {
 	case sql.ErrNoRows:
 		return UserByName{}, err
 	case nil:
-		return UserByName{UserName: username, Password: password}, nil
+		return UserByName{UserName: username, Password: password, UserId: userid}, nil
 	default:
 		return UserByName{}, err
 	}
@@ -155,15 +179,59 @@ func (h *Handlers) LoginUser(c *fiber.Ctx) error {
 
 	claims := jwt.MapClaims{
 		"username": userExist.UserName,
+		"userid":   userExist.UserId,
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	t, err := token.SignedString([]byte("secret"))
+	t, err := token.SignedString(h.JWTSecret)
 	if err != nil {
 		return c.SendStatus(fiber.StatusInternalServerError)
 	}
 
 	return c.JSON(fiber.Map{"token": t})
+}
+
+type NewOrg struct {
+	Name      string `json:"name"`
+	OrgSecret string `json:"orgsecret"`
+}
+
+func (h *Handlers) CreateOrganization(c *fiber.Ctx) error {
+	var body NewOrg
+
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	fmt.Println(body.Name)
+	fmt.Println(body.OrgSecret)
+	if body.Name == "" || body.OrgSecret == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Name and orgsecret is required",
+		})
+	}
+
+	query := "INSERT INTO organizations (name, orgsecret, orgowner) VALUES ($1, $2, $3) RETURNING orgid"
+	var orgID int
+
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+	userID := claims["userid"].(string)
+
+	err := h.db.QueryRow(query, body.Name, body.OrgSecret, userID).Scan(&orgID)
+	if err != nil {
+		log.Printf("Database query error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create org",
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message": "Org created successfully",
+		"orgid":   orgID,
+	})
 }
