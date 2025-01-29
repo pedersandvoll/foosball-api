@@ -230,6 +230,15 @@ func (h *Handlers) CreateOrganization(c *fiber.Ctx) error {
 		})
 	}
 
+	queryOrgSettings := "INSERT INTO organizationsettings (orgid, orgowner) VALUES ($1, $2)"
+	_, err = h.db.Exec(queryOrgSettings, orgID, userID)
+	if err != nil {
+		log.Printf("Database query error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create org settings",
+		})
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "Org created successfully",
 		"orgid":   orgID,
