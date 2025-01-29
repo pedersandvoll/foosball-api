@@ -28,10 +28,16 @@ func NewHandlers(db *config.Database, jwtSecret string) *Handlers {
 
 func (h *Handlers) RefreshToken(c *fiber.Ctx) error {
 	username := c.Locals("username").(string)
+	userid := c.Locals("userid").(string)
 
 	claims := jwt.MapClaims{
 		"username": username,
+		"userid":   userid,
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+	}
+
+	if activeOrg, ok := c.Locals("activeOrg").(string); ok && activeOrg != "" {
+		claims["activeorg"] = activeOrg
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
