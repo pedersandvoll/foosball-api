@@ -314,9 +314,11 @@ func (h *Handlers) JoinOrg(c *fiber.Ctx) error {
 }
 
 type OrgSettings struct {
-	OrgOwner          *int `json:"orgowner"`
-	MaxLobbies        *int `json:"maxlobbies"`
-	MaxGamesPerSeason *int `json:"maxgamesperseason"`
+	OrgOwner          *int    `json:"orgowner"`
+	MaxLobbies        *int    `json:"maxlobbies"`
+	MaxGamesPerSeason *int    `json:"maxgamesperseason"`
+	Team1Color        *string `json:"team1color"`
+	Team2Color        *string `json:"team2color"`
 }
 
 func (h *Handlers) EditOrgSettings(c *fiber.Ctx) error {
@@ -364,6 +366,16 @@ func (h *Handlers) EditOrgSettings(c *fiber.Ctx) error {
 	if body.MaxGamesPerSeason != nil {
 		query += fmt.Sprintf("maxgamesperseason = $%d, ", argCount)
 		args = append(args, *body.MaxGamesPerSeason)
+		argCount++
+	}
+	if body.Team1Color != nil {
+		query += fmt.Sprintf("Team1Color = $%d, ", argCount)
+		args = append(args, *body.Team1Color)
+		argCount++
+	}
+	if body.Team2Color != nil {
+		query += fmt.Sprintf("Team2Color = $%d, ", argCount)
+		args = append(args, *body.Team2Color)
 		argCount++
 	}
 
