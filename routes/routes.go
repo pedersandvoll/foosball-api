@@ -16,7 +16,10 @@ func Routes(app *fiber.App, h *handlers.Handlers) {
 
 	api.Post("/refresh", h.RefreshToken)
 	api.Get("/users", h.GetUsers)
+
 	api.Post("/org", h.CreateOrganization)
 	api.Post("/join/org", h.JoinOrg)
 	api.Post("/edit/org", h.EditOrgSettings)
+
+	api.Post("/season", h.CreateSeason)
 }

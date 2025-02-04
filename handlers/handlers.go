@@ -6,6 +6,7 @@ import (
 	"log"
 	"pedersandvoll/foosballapi/config"
 	"pedersandvoll/foosballapi/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,29 @@ func NewHandlers(db *config.Database, jwtSecret string) *Handlers {
 		db:        db,
 		JWTSecret: []byte(jwtSecret),
 	}
+}
+
+func (h *Handlers) GenerateToken(c *fiber.Ctx) (string, error) {
+	username := c.Locals("username").(string)
+	userid := c.Locals("userid").(string)
+
+	claims := jwt.MapClaims{
+		"username": username,
+		"userid":   userid,
+		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+	}
+	userExist, err := h.getUserByUsername(username)
+	if userExist.ActiveOrg != nil {
+		claims["activeorg"] = *userExist.ActiveOrg
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	t, err := token.SignedString(h.JWTSecret)
+	if err != nil {
+		return "", err
+	}
+
+	return t, nil
 }
 
 func (h *Handlers) RefreshToken(c *fiber.Ctx) error {
@@ -309,8 +333,16 @@ func (h *Handlers) JoinOrg(c *fiber.Ctx) error {
 		})
 	}
 
+	newToken, err := h.GenerateToken(c)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to refresh token",
+		})
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message": "Added user to organization",
+		"message":  "Added user to organization",
+		"newtoken": newToken,
 	})
 }
 
@@ -394,5 +426,108 @@ func (h *Handlers) EditOrgSettings(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Organization settings updated successfully",
+	})
+}
+
+type CreateSeason struct {
+	Name string `json:"name"`
+}
+
+func (h *Handlers) CreateSeason(c *fiber.Ctx) error {
+	var body CreateSeason
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if body.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "At least one option must be passed in",
+		})
+	}
+
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+	activeOrg, exists := claims["activeorg"]
+	if !exists || activeOrg == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "User not part of any org",
+		})
+	}
+	activeOrgStr, ok := activeOrg.(string)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid activeorg format",
+		})
+	}
+
+	query := "INSERT INTO seasons (name, orgid) VALUES ($1, $2) RETURNING name, seasonid"
+	var name string
+	var seasonid int
+
+	err := h.db.QueryRow(query, body.Name, activeOrgStr).Scan(&name, &seasonid)
+	if err != nil {
+		log.Printf("Database query error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create season",
+		})
+	}
+
+	h.SetActiveSeason(c, seasonid)
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message":  "Season created successfully",
+		"name":     name,
+		"seasonid": seasonid,
+	})
+}
+
+// type ActiveSeason struct {
+// 	SeasonId int `json:"seasonid"`
+// }
+
+func (h *Handlers) SetActiveSeason(c *fiber.Ctx, seasonId int) error {
+	query := "SELECT orgid FROM seasons WHERE seasonid=$1"
+	var orgId int
+	err := h.db.QueryRow(query, seasonId).Scan(&orgId)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to find season",
+		})
+	}
+
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+	activeOrg, exists := claims["activeorg"]
+	if !exists || activeOrg == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "User not part of any org",
+		})
+	}
+	activeOrgStr, ok := activeOrg.(string)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid activeorg format",
+		})
+	}
+
+	if activeOrgStr != strconv.Itoa(orgId) {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Season is not apart of you're org",
+		})
+	}
+
+	query2 := "UPDATE organizations SET activeseason = $1 WHERE orgid = $2"
+	_, err = h.db.Exec(query2, seasonId, orgId)
+	if err != nil {
+		log.Printf("Database query error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to set active season",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Successfully set active season",
 	})
 }
