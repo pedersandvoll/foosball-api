@@ -207,8 +207,7 @@ func (h *Handlers) LoginUser(c *fiber.Ctx) error {
 }
 
 type NewOrg struct {
-	Name      string `json:"name"`
-	OrgSecret string `json:"orgsecret"`
+	Name string `json:"name"`
 }
 
 func (h *Handlers) CreateOrganization(c *fiber.Ctx) error {
@@ -219,20 +218,21 @@ func (h *Handlers) CreateOrganization(c *fiber.Ctx) error {
 		})
 	}
 
-	if body.Name == "" || body.OrgSecret == "" {
+	if body.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Name and orgsecret is required",
 		})
 	}
 
-	query := "INSERT INTO organizations (name, orgsecret, orgowner) VALUES ($1, $2, $3) RETURNING orgid"
+	query := "INSERT INTO organizations (name, orgowner) VALUES ($1, $2) RETURNING orgid, orgsecret"
 	var orgID int
+	var orgSecret string
 
 	token := c.Locals("user").(*jwt.Token)
 	claims := token.Claims.(jwt.MapClaims)
 	userID := claims["userid"].(string)
 
-	err := h.db.QueryRow(query, body.Name, body.OrgSecret, userID).Scan(&orgID)
+	err := h.db.QueryRow(query, body.Name, userID).Scan(&orgID, &orgSecret)
 	if err != nil {
 		log.Printf("Database query error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -250,8 +250,9 @@ func (h *Handlers) CreateOrganization(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message": "Org created successfully",
-		"orgid":   orgID,
+		"message":   "Org created successfully",
+		"orgid":     orgID,
+		"orgsecret": orgSecret,
 	})
 }
 
