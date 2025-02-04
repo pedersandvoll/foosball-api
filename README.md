@@ -9,12 +9,12 @@ This is basically just a project for me to get more knowledge about golang (and 
 - [x] Auth flow with tokens and refresh token
 - [x] Organization creation
 - [x] Organization settings
-- [ ] Maybe improve auth flow?
-- [ ] Seasons
+- [x] Seasons
 - [ ] Lobby creation, and logic around lobbys in general
 - [ ] Set up game creation, and game recording
 - [ ] Elo system
 - [ ] Rankings
 - [ ] Fun stat page
+- [ ] Maybe improve auth flow?
 - [ ] Tournament mode
 - [ ] Fun features
