@@ -1,0 +1,5 @@
+DROP INDEX IF EXISTS idx_createdby;
+DROP INDEX IF EXISTS idx_seasonid;
+DROP INDEX IF EXISTS idx_orgid;
+DROP TABLE IF EXISTS lobbies;
+DROP TYPE IF EXISTS lobby_status;
