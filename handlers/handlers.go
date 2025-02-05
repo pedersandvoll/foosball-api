@@ -531,3 +531,81 @@ func (h *Handlers) SetActiveSeason(c *fiber.Ctx, seasonId int) error {
 		"message": "Successfully set active season",
 	})
 }
+
+type OrgDetails struct {
+	Name         string `json:"name"`
+	OrgSecret    string `json:"orgsecret`
+	OrgOwner     int    `json:"orgowner`
+	ActiveSeason *int   `json:"activeseason"`
+}
+
+func (h *Handlers) GetOrgDetails(c *fiber.Ctx, orgid string) (OrgDetails, error) {
+	var name string
+	var orgsecret string
+	var orgowner int
+	var activeseason *int
+
+	query := "SELECT name, orgsecret, orgowner, activeseason FROM organizations WHERE orgid=$1;"
+	row := h.db.QueryRow(query, orgid)
+
+	switch err := row.Scan(&name, &orgowner, &orgsecret, &activeseason); err {
+	case sql.ErrNoRows:
+		return OrgDetails{}, err
+	case nil:
+		return OrgDetails{Name: name, OrgSecret: orgsecret, OrgOwner: orgowner, ActiveSeason: activeseason}, nil
+	default:
+		return OrgDetails{}, err
+	}
+}
+
+func (h *Handlers) CreateLobby(c *fiber.Ctx) error {
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+	userID := claims["userid"].(string)
+	activeOrg, exists := claims["activeorg"]
+	if !exists || activeOrg == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "User not part of any org",
+		})
+	}
+	activeOrgStr, ok := activeOrg.(string)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid activeorg format",
+		})
+	}
+
+	org, err := h.GetOrgDetails(c, activeOrgStr)
+	if err == sql.ErrNoRows {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Organization does not exist",
+		})
+	} else if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Database error",
+		})
+	}
+	if org.ActiveSeason == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Organization not connected to a season",
+		})
+	}
+
+	queryCreateLobby := "INSERT INTO lobbies (orgid, seasonid, createdby) VALUES ($1, $2, $3) RETURNING lobbyid"
+	var lobbyId int
+
+	err = h.db.QueryRow(queryCreateLobby, activeOrgStr, org.ActiveSeason,
+
+		userID).Scan(&lobbyId)
+	if err != nil {
+		log.Printf("Database query error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create lobby",
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message": "Lobby created successfully",
+		"lobbyid": lobbyId,
+	})
+}

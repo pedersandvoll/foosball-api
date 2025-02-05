@@ -22,4 +22,6 @@ func Routes(app *fiber.App, h *handlers.Handlers) {
 	api.Post("/edit/org", h.EditOrgSettings)
 
 	api.Post("/season", h.CreateSeason)
+
+	api.Post("/lobby", h.CreateLobby)
 }
