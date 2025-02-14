@@ -4,5 +4,5 @@ ADD COLUMN activeorg INT;
 ALTER TABLE users
 ADD CONSTRAINT fk_activeorg
 FOREIGN KEY (activeorg)
-REFERENCES organizations(orgi)
+REFERENCES organizations(orgid)
 ON DELETE SET NULL;
