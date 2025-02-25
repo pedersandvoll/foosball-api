@@ -8,9 +8,9 @@ import (
 
 type LobbyCleanupService struct {
 	db             *config.Database
-	checkInterval  time.Duration // How often to check for inactive lobbies
-	inactiveWindow time.Duration // How long a lobby can be inactive before deletion
-	stop           chan struct{} // Channel to signal shutdown
+	checkInterval  time.Duration
+	inactiveWindow time.Duration
+	stop           chan struct{}
 }
 
 func NewLobbyCleanupService(db *config.Database, checkInterval, inactiveWindow time.Duration) *LobbyCleanupService {
