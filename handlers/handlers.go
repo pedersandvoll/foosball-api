@@ -682,3 +682,44 @@ func (h *Handlers) CreateLobby(c *fiber.Ctx) error {
 		"lobbyid": lobbyId,
 	})
 }
+
+type JoinLobbyBody struct {
+	LobbyId string `json:"lobbyid"`
+}
+
+func (h *Handlers) JoinLobby(c *fiber.Ctx) error {
+	var body JoinLobbyBody
+
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if body.LobbyId == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "LobbyId is required",
+		})
+	}
+
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+	userID := claims["userid"].(string)
+
+	query := "INSERT INTO lobbyplayers (lobbyid, userid) VALUES ($1, $2) RETURNING playerid"
+
+	var playerID int
+	var err error
+
+	err = h.db.QueryRow(query, body.LobbyId, userID).Scan(&playerID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to join lobby",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message":  "Joined lobby successfully",
+		"playerid": playerID,
+	})
+}
