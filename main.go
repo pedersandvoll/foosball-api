@@ -2,9 +2,11 @@ package main
 
 import (
 	"log"
+	"pedersandvoll/foosballapi/cleanup"
 	"pedersandvoll/foosballapi/config"
 	"pedersandvoll/foosballapi/handlers"
 	"pedersandvoll/foosballapi/routes"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
@@ -26,6 +28,9 @@ func main() {
 	app := fiber.New()
 
 	h := handlers.NewHandlers(db, dbConfig.JWTSecret)
+
+	service := cleanup.NewLobbyCleanupService(db, 1*time.Minute, 30*time.Minute)
+	service.Start()
 
 	routes.Routes(app, h)
 
