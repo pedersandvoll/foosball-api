@@ -23,5 +23,6 @@ func Routes(app *fiber.App, h *handlers.Handlers) {
 
 	api.Post("/season", h.CreateSeason)
 
+	api.Get("/lobbies", h.GetLobbies)
 	api.Post("/lobby", h.CreateLobby)
 }

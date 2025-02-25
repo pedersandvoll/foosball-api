@@ -131,6 +131,27 @@ func (h *Handlers) getUserByUsername(username string) (UserByName, error) {
 	}
 }
 
+type UserObject struct {
+	UserId   string `json:"userid"`
+	UserName string `json:"username"`
+}
+
+func (h *Handlers) getUserById(userid string) (UserObject, error) {
+	var username string
+
+	query := "SELECT userid, username FROM users WHERE userid=$1;"
+	row := h.db.QueryRow(query, userid)
+
+	switch err := row.Scan(&userid, &username); err {
+	case sql.ErrNoRows:
+		return UserObject{}, err
+	case nil:
+		return UserObject{UserId: userid, UserName: username}, nil
+	default:
+		return UserObject{}, err
+	}
+}
+
 type UserBody struct {
 	UserName string `json:"username"`
 	Password string `json:"password"`
@@ -556,6 +577,58 @@ func (h *Handlers) GetOrgDetails(c *fiber.Ctx, orgid string) (OrgDetails, error)
 	default:
 		return OrgDetails{}, err
 	}
+}
+
+type LobbyStatus string
+
+const (
+	LobbyStatusNotInGame LobbyStatus = "not_in_game"
+	LobbyStatusInGame    LobbyStatus = "in_game"
+)
+
+type LobbyDetails struct {
+	LobbyId   string      `json:"lobbyid"`
+	CreatedBy UserObject  `json:"createdby"`
+	Status    LobbyStatus `json:"status"`
+}
+
+func (h *Handlers) GetLobbies(c *fiber.Ctx) error {
+	rows, err := h.db.Query("SELECT lobbyid, createdby, status FROM lobbies")
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database query failed"})
+	}
+	defer rows.Close()
+
+	var lobbies []LobbyDetails
+
+	for rows.Next() {
+		var lobby LobbyDetails
+		var userID string
+
+		err := rows.Scan(
+			&lobby.LobbyId,
+			&userID,
+			&lobby.Status,
+		)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to scan row"})
+		}
+
+		user, err := h.getUserById(userID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to get user details"})
+		}
+
+		lobby.CreatedBy = user
+
+		lobbies = append(lobbies, lobby)
+	}
+
+	if err = rows.Err(); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Error iterating over rows"})
+	}
+
+	return c.JSON(lobbies)
 }
 
 func (h *Handlers) CreateLobby(c *fiber.Ctx) error {
